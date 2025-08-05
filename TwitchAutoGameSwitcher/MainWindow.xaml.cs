@@ -1,10 +1,14 @@
-﻿using System.Collections.ObjectModel;
+﻿using Newtonsoft.Json;
+using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.IO;
-using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using TwitchAutoGameSwitcher.NxApi;
+using TwitchAutoGameSwitcher.NxApi.Model;
 using TwitchLib.Api;
 using TwitchLib.Api.Helix.Models.Channels.ModifyChannelInformation;
 
@@ -19,6 +23,11 @@ namespace TwitchAutoGameSwitcher
         public required string ExecutableName { get; set; }
     }
 
+    public class SseEndpointConfig
+    {
+        public string Endpoint { get; set; } = string.Empty;
+    }
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -26,15 +35,22 @@ namespace TwitchAutoGameSwitcher
     {
         private ObservableCollection<GameSetting> _gameSettings = new();
         private const string SettingsFile = "GameSettings.json";
+        private const string SseEndpointConfigFile = "SseEndpoint.json";
 
         private System.Timers.Timer _scanTimer;
         private TwitchAPI _twitchApi;
         private OAuthInfo _oauthInfo;
         private string? _lastGameId = null;
 
+        // SSE 相關欄位
+        private SSEClient? _sseClient;
+        private readonly ConcurrentQueue<FriendJson> _sseFriendQueue = new();
+        private string? _lastSseGameId = null;
+
         public MainWindow()
         {
             InitializeComponent();
+            LoadSseEndpointConfig();
             CheckOAuthAsync();
             LoadGameSettings();
             GameDataGrid.ItemsSource = _gameSettings;
@@ -42,6 +58,64 @@ namespace TwitchAutoGameSwitcher
             StartButton.Click += StartButton_Click;
             StopButton.Click += StopButton_Click;
             AddButton.Click += AddButton_Click;
+            ApplySseEndpointButton.Click += ApplySseEndpointButton_Click;
+        }
+
+        private void LoadSseEndpointConfig()
+        {
+            if (File.Exists(SseEndpointConfigFile))
+            {
+                try
+                {
+                    var json = File.ReadAllText(SseEndpointConfigFile);
+                    var config = System.Text.Json.JsonSerializer.Deserialize<SseEndpointConfig>(json);
+                    if (config != null && !string.IsNullOrWhiteSpace(config.Endpoint))
+                    {
+                        SseEndpointTextBox.Text = config.Endpoint;
+                    }
+                }
+                catch { /* TODO: log or show error */ }
+            }
+        }
+
+        private void SaveSseEndpointConfig(string endpoint)
+        {
+            try
+            {
+                var config = new SseEndpointConfig { Endpoint = endpoint };
+                var json = System.Text.Json.JsonSerializer.Serialize(config);
+                File.WriteAllText(SseEndpointConfigFile, json);
+            }
+            catch { /* TODO: log or show error */ }
+        }
+
+        private void InitSSEClient(string? endpoint = null)
+        {
+            // 關閉舊連線
+            _sseClient?.Dispose();
+            _sseClient = null;
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                endpoint = SseEndpointTextBox.Text.Trim();
+            }
+            if (string.IsNullOrWhiteSpace(endpoint)) return;
+            _sseClient = new SSEClient(endpoint);
+            _sseClient.OnEventReceived += (eventName, data) =>
+            {
+                if (eventName == "friend")
+                {
+                    try
+                    {
+                        var friend = JsonConvert.DeserializeObject<FriendJson>(data);
+                        if (friend != null && friend.Presence != null && friend.Presence.State == "ONLINE")
+                        {
+                            _sseFriendQueue.Enqueue(friend);
+                        }
+                    }
+                    catch { /* TODO: log or handle error */ }
+                }
+            };
+            _sseClient.Start();
         }
 
         private async void CheckOAuthAsync()
@@ -55,7 +129,6 @@ namespace TwitchAutoGameSwitcher
                     oauth = OAuthHelper.LoadOAuthInfo();
                 }
             }
-            // TODO: 若 oauth 有效，進入主流程
         }
 
         private void LoadGameSettings()
@@ -64,11 +137,10 @@ namespace TwitchAutoGameSwitcher
             {
                 try
                 {
-                    var json = File.ReadAllText(SettingsFile);
-                    var list = JsonSerializer.Deserialize<ObservableCollection<GameSetting>>(json);
-                    if (list != null)
+                    var json = System.Text.Json.JsonSerializer.Deserialize<ObservableCollection<GameSetting>>(File.ReadAllText(SettingsFile));
+                    if (json != null)
                     {
-                        _gameSettings = new ObservableCollection<GameSetting>(list);
+                        _gameSettings = new ObservableCollection<GameSetting>(json);
                     }
                 }
                 catch { /* TODO: log or show error */ }
@@ -79,7 +151,7 @@ namespace TwitchAutoGameSwitcher
         {
             try
             {
-                var json = JsonSerializer.Serialize(_gameSettings);
+                var json = System.Text.Json.JsonSerializer.Serialize(_gameSettings);
                 File.WriteAllText(SettingsFile, json);
             }
             catch { /* TODO: log or show error */ }
@@ -117,21 +189,47 @@ namespace TwitchAutoGameSwitcher
             StatusLab.Content = "已停止自動切換。";
         }
 
-        private async void ScanTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private async void ScanTimer_Elapsed(object? _, ElapsedEventArgs e)
         {
             try
             {
                 var windowList = new List<WindowInfo>();
                 WindowHelper.FillWindowList(windowList, WindowSearchMode.ExcludeMinimized);
-                if (windowList.Count == 0)
+                GameSetting? matched = null;
+                if (windowList.Count > 0)
                 {
-                    Dispatcher.Invoke(() => StatusLab.Content = "未偵測到遊戲視窗。");
-                    return;
+                    matched = _gameSettings
+                        .OrderByDescending(g => g.Priority)
+                        .FirstOrDefault(g => windowList.Any(exe => exe.Executable.EndsWith(g.ExecutableName, StringComparison.OrdinalIgnoreCase)));
                 }
 
-                var matched = _gameSettings
-                    .OrderByDescending(g => g.Priority)
-                    .FirstOrDefault(g => windowList.Any(exe => exe.Executable.EndsWith(g.ExecutableName, StringComparison.OrdinalIgnoreCase)));
+                // 若本地未偵測到遊戲，或本地偵測到但沒找到對應遊戲設定，則檢查 SSE 狀態
+                if (matched == null)
+                {
+                    // 檢查 SSE 佇列
+                    while (_sseFriendQueue.TryDequeue(out var friend))
+                    {
+                        // 你可以根據 friend.Presence.Game 進行更細緻的判斷
+                        // 這裡假設 friend.Name 或其他欄位可對應到 GameSetting
+                        var sseMatched = _gameSettings.FirstOrDefault(g =>
+                            string.Equals(g.Name, friend.Name, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(g.Id, friend.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+                        if (sseMatched != null && sseMatched.Id != _lastSseGameId)
+                        {
+                            await UpdateTwitchGameAsync(sseMatched.Id, sseMatched.Name);
+                            _lastSseGameId = sseMatched.Id;
+                            Dispatcher.Invoke(() => StatusLab.Content = $"(SSE) 已切換 Twitch 分類：{sseMatched.Name}");
+                            return;
+                        }
+                        else if (sseMatched != null)
+                        {
+                            Dispatcher.Invoke(() => StatusLab.Content = $"(SSE) 已偵測到：{sseMatched.Name}，分類未變更。");
+                            return;
+                        }
+                    }
+                    Dispatcher.Invoke(() => StatusLab.Content = "未偵測到遊戲視窗，且 SSE 無對應狀態。");
+                    return;
+                }
 
                 if (matched != null && matched.Id != _lastGameId)
                 {
@@ -243,6 +341,9 @@ namespace TwitchAutoGameSwitcher
         protected override void OnClosed(EventArgs e)
         {
             SaveGameSettings();
+            // 釋放 SSEClient 資源
+            _sseClient?.Dispose();
+            _sseClient = null;
             base.OnClosed(e);
         }
 
@@ -255,6 +356,22 @@ namespace TwitchAutoGameSwitcher
                 _scanTimer = null;
             }
             base.OnClosing(e);
+        }
+
+        private void ApplySseEndpointButton_Click(object sender, RoutedEventArgs e)
+        {
+            var endpoint = SseEndpointTextBox.Text.Trim();
+            // 檢查格式: https://nxapi-presence.fancy.org.uk/api/presence/[id]/events
+            var match = Regex.Match(endpoint, @"^https://nxapi-presence\.fancy\.org\.uk/api/presence/([^/]+)/events$");
+            if (!match.Success)
+            {
+                StatusLab.Content = "SSE 端點格式錯誤，請確認輸入正確的 URL。";
+                return;
+            }
+            var id = match.Groups[1].Value;
+            StatusLab.Content = $"SSE 端點已套用，ID: {id}";
+            SaveSseEndpointConfig(endpoint);
+            InitSSEClient(endpoint);
         }
     }
 }

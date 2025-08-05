@@ -6,11 +6,38 @@
         xmlns:local="clr-namespace:TwitchAutoGameSwitcher"
         mc:Ignorable="d"
         Title="Twitch 自動遊戲分類切換器" Height="600" Width="744">
+    <Window.Resources>
+        <Style x:Key="PlaceholderTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost"/>
+                            <TextBlock x:Name="PlaceholderText"
+                                       Text="{TemplateBinding Tag}"
+                                       Foreground="Gray"
+                                       Margin="5,0,0,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Visibility="Collapsed"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="PlaceholderText" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid Margin="20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         <Label x:Name="StatusLab" Content="" HorizontalAlignment="Left" VerticalAlignment="Top"/>
         <!-- 語言切換 -->
@@ -21,8 +48,16 @@
                 <ComboBoxItem Content="English" Tag="en"/>
             </ComboBox>
         </StackPanel>
+        <!-- SSE 端點輸入區 -->
+        <StackPanel Margin="0,5,0,5" Grid.Row="1" VerticalAlignment="Center" Orientation="Horizontal">
+            <TextBlock Text="SSE 端點：" Margin="0,0,5,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            <TextBox x:Name="SseEndpointTextBox" Margin="0,0,5,0" Width="559"
+                     Style="{StaticResource PlaceholderTextBoxStyle}"
+                     Tag="https://nxapi-presence.fancy.org.uk/api/presence/[id]/events" VerticalAlignment="Center"/>
+            <Button x:Name="ApplySseEndpointButton" Content="套用" Click="ApplySseEndpointButton_Click" HorizontalAlignment="Right" Width="60" VerticalAlignment="Center"/>
+        </StackPanel>
         <!-- DataGrid 區塊 -->
-        <DataGrid x:Name="GameDataGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,10,0,10"
+        <DataGrid x:Name="GameDataGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,10,0,10"
                   IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow">
             <DataGrid.Resources>
                 <Style x:Key="CenterTextColumnStyle" TargetType="TextBlock">
@@ -61,7 +96,7 @@
             </DataGrid.Columns>
         </DataGrid>
         <!-- 按鈕區塊 -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="StartButton" Content="開始" Width="100" Margin="0,0,10,0"/>
             <Button x:Name="StopButton" Content="停止" Width="100" Margin="0,0,10,0"/>
             <Button x:Name="AddButton" Content="新增資料" Width="120"/>

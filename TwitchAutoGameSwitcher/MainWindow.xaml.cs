@@ -1,5 +1,4 @@
 ﻿using Newtonsoft.Json;
-using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -44,7 +43,7 @@ namespace TwitchAutoGameSwitcher
 
         // SSE 相關欄位
         private SSEClient? _sseClient;
-        private readonly ConcurrentQueue<TitleJson> _sseTitleQueue = new();
+        private string? _latestSseTitleId = null;
 
         public MainWindow()
         {
@@ -141,7 +140,11 @@ namespace TwitchAutoGameSwitcher
                 {
                     // 玩家離線時 title 只會發送 "{}"
                     if (data == "{}")
+                    {
+                        SetSSETitleLabel("");
+                        _latestSseTitleId = null;
                         return;
+                    }
 
                     try
                     {
@@ -149,7 +152,7 @@ namespace TwitchAutoGameSwitcher
                         if (title != null)
                         {
                             SetSSETitleLabel($"{title.Name} ({title.Id})");
-                            _sseTitleQueue.Enqueue(title);
+                            _latestSseTitleId = title.Id;
                         }
                     }
                     catch { /* TODO: log or handle error */ }
@@ -256,34 +259,25 @@ namespace TwitchAutoGameSwitcher
                 }
 
                 // 若本地未偵測到遊戲，或本地偵測到但沒找到對應遊戲設定，則檢查 SSE 狀態
-                if (matched == null)
+                if (matched == null && !string.IsNullOrEmpty(_latestSseTitleId))
                 {
-                    // 檢查 SSE 佇列
-                    while (_sseTitleQueue.TryDequeue(out var title))
-                    {
-                        matched = _gameSettings.FirstOrDefault(g =>
-                            string.Equals(g.ExecutableName, title.Id.ToString(), StringComparison.OrdinalIgnoreCase));
-                    }
-
-                    if (matched == null)
-                    {
-                        Dispatcher.Invoke(() => StatusLab.Content = "未偵測到遊戲視窗，且 SSE 無對應狀態。");
-                        return;
-                    }
+                    matched = _gameSettings.FirstOrDefault(g => string.Equals(g.ExecutableName, _latestSseTitleId, StringComparison.OrdinalIgnoreCase));
                 }
 
-                if (matched != null && matched.Id != _lastGameId)
+                if (matched == null)
+                {
+                    Dispatcher.Invoke(() => StatusLab.Content = "未偵測到遊戲視窗，且 SSE 無對應狀態。");
+                    return;
+                }
+
+                if (matched.Id != _lastGameId)
                 {
                     await UpdateTwitchGameAsync(matched.Id, matched.Name);
                     _lastGameId = matched.Id;
                 }
-                else if (matched != null)
-                {
-                    Dispatcher.Invoke(() => StatusLab.Content = $"已偵測到: {matched.Name}，分類未變更。");
-                }
                 else
                 {
-                    Dispatcher.Invoke(() => StatusLab.Content = "未找到對應遊戲設定。");
+                    Dispatcher.Invoke(() => StatusLab.Content = $"已偵測到: {matched.Name}，分類未變更。");
                 }
             }
             catch (Exception ex)

@@ -150,7 +150,7 @@ namespace TwitchAutoGameSwitcher
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"OAuth 流程發生錯誤：{ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"OAuth 流程發生錯誤: {ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {

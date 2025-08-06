@@ -44,8 +44,7 @@ namespace TwitchAutoGameSwitcher
 
         // SSE 相關欄位
         private SSEClient? _sseClient;
-        private readonly ConcurrentQueue<FriendJson> _sseFriendQueue = new();
-        private string? _lastSseGameId = null;
+        private readonly ConcurrentQueue<TitleJson> _sseTitleQueue = new();
 
         public MainWindow()
         {
@@ -58,9 +57,9 @@ namespace TwitchAutoGameSwitcher
             StartButton.Click += StartButton_Click;
             StopButton.Click += StopButton_Click;
             AddButton.Click += AddButton_Click;
-            ApplySseEndpointButton.Click += ApplySseEndpointButton_Click;
         }
 
+        #region SSE 相關方法
         private void LoadSseEndpointConfig()
         {
             if (File.Exists(SseEndpointConfigFile))
@@ -89,16 +88,39 @@ namespace TwitchAutoGameSwitcher
             catch { /* TODO: log or show error */ }
         }
 
+        private void ApplySseEndpointButton_Click(object sender, RoutedEventArgs e)
+        {
+            var endpoint = SseEndpointTextBox.Text.Trim();
+            // 檢查格式: https://nxapi-presence.fancy.org.uk/api/presence/[id]/events
+            var match = Regex.Match(endpoint, @"^https://nxapi-presence\.fancy\.org\.uk/api/presence/([^/]+)/events$");
+            if (!match.Success)
+            {
+                StatusLab.Content = "SSE 端點格式錯誤，請確認輸入正確的 URL。";
+                return;
+            }
+            var id = match.Groups[1].Value;
+            StatusLab.Content = $"SSE 端點已套用，ID: {id}";
+            SaveSseEndpointConfig(endpoint);
+            InitSSEClient(endpoint);
+            ApplySseEndpointButton.IsEnabled = false;
+        }
+
         private void InitSSEClient(string? endpoint = null)
         {
             // 關閉舊連線
-            _sseClient?.Dispose();
-            _sseClient = null;
+            if (_sseClient != null)
+            {
+                _sseClient.Stop();
+                _sseClient.Dispose();
+                _sseClient = null;
+            }
+
             if (string.IsNullOrWhiteSpace(endpoint))
             {
                 endpoint = SseEndpointTextBox.Text.Trim();
             }
             if (string.IsNullOrWhiteSpace(endpoint)) return;
+
             _sseClient = new SSEClient(endpoint);
             _sseClient.OnEventReceived += (eventName, data) =>
             {
@@ -107,16 +129,46 @@ namespace TwitchAutoGameSwitcher
                     try
                     {
                         var friend = JsonConvert.DeserializeObject<FriendJson>(data);
-                        if (friend != null && friend.Presence != null && friend.Presence.State == "ONLINE")
+                        if (friend != null && friend.Presence != null)
                         {
-                            _sseFriendQueue.Enqueue(friend);
+                            string state = friend.Presence.State == "ONLINE" ? "線上" : "離線";
+                            SetSSEStatusLabel($"SSE 狀態: 已登入 - {friend.Name} ({state})");
+                        }
+                    }
+                    catch { /* TODO: log or handle error */ }
+                }
+                else if (eventName == "title")
+                {
+                    // 玩家離線時 title 只會發送 "{}"
+                    if (data == "{}")
+                        return;
+
+                    try
+                    {
+                        var title = JsonConvert.DeserializeObject<TitleJson>(data);
+                        if (title != null)
+                        {
+                            SetSSETitleLabel($"{title.Name} ({title.Id})");
+                            _sseTitleQueue.Enqueue(title);
                         }
                     }
                     catch { /* TODO: log or handle error */ }
                 }
             };
+
             _sseClient.Start();
         }
+
+        private void SetSSEStatusLabel(string message)
+        {
+            SSEStatusLab.Dispatcher.Invoke(() => SSEStatusLab.Content = message);
+        }
+
+        private void SetSSETitleLabel(string message)
+        {
+            SSETitleLab.Dispatcher.Invoke(() => SSETitleLab.Content = message);
+        }
+        #endregion
 
         private async void CheckOAuthAsync()
         {
@@ -207,28 +259,17 @@ namespace TwitchAutoGameSwitcher
                 if (matched == null)
                 {
                     // 檢查 SSE 佇列
-                    while (_sseFriendQueue.TryDequeue(out var friend))
+                    while (_sseTitleQueue.TryDequeue(out var title))
                     {
-                        // 你可以根據 friend.Presence.Game 進行更細緻的判斷
-                        // 這裡假設 friend.Name 或其他欄位可對應到 GameSetting
-                        var sseMatched = _gameSettings.FirstOrDefault(g =>
-                            string.Equals(g.Name, friend.Name, StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(g.Id, friend.Id.ToString(), StringComparison.OrdinalIgnoreCase));
-                        if (sseMatched != null && sseMatched.Id != _lastSseGameId)
-                        {
-                            await UpdateTwitchGameAsync(sseMatched.Id, sseMatched.Name);
-                            _lastSseGameId = sseMatched.Id;
-                            Dispatcher.Invoke(() => StatusLab.Content = $"(SSE) 已切換 Twitch 分類：{sseMatched.Name}");
-                            return;
-                        }
-                        else if (sseMatched != null)
-                        {
-                            Dispatcher.Invoke(() => StatusLab.Content = $"(SSE) 已偵測到：{sseMatched.Name}，分類未變更。");
-                            return;
-                        }
+                        matched = _gameSettings.FirstOrDefault(g =>
+                            string.Equals(g.ExecutableName, title.Id.ToString(), StringComparison.OrdinalIgnoreCase));
                     }
-                    Dispatcher.Invoke(() => StatusLab.Content = "未偵測到遊戲視窗，且 SSE 無對應狀態。");
-                    return;
+
+                    if (matched == null)
+                    {
+                        Dispatcher.Invoke(() => StatusLab.Content = "未偵測到遊戲視窗，且 SSE 無對應狀態。");
+                        return;
+                    }
                 }
 
                 if (matched != null && matched.Id != _lastGameId)
@@ -238,7 +279,7 @@ namespace TwitchAutoGameSwitcher
                 }
                 else if (matched != null)
                 {
-                    Dispatcher.Invoke(() => StatusLab.Content = $"已偵測到：{matched.Name}，分類未變更。");
+                    Dispatcher.Invoke(() => StatusLab.Content = $"已偵測到: {matched.Name}，分類未變更。");
                 }
                 else
                 {
@@ -247,7 +288,7 @@ namespace TwitchAutoGameSwitcher
             }
             catch (Exception ex)
             {
-                Dispatcher.Invoke(() => StatusLab.Content = $"偵測過程發生錯誤：{ex.Message}");
+                Dispatcher.Invoke(() => StatusLab.Content = $"偵測過程發生錯誤: {ex.Message}");
             }
         }
 
@@ -257,11 +298,11 @@ namespace TwitchAutoGameSwitcher
             {
                 var req = new ModifyChannelInformationRequest { GameId = gameId };
                 await _twitchApi.Helix.Channels.ModifyChannelInformationAsync(_oauthInfo.BroadcasterId, req);
-                Dispatcher.Invoke(() => StatusLab.Content = $"已切換 Twitch 分類：{gameName ?? gameId}");
+                Dispatcher.Invoke(() => StatusLab.Content = $"已切換 Twitch 分類: {gameName ?? gameId}");
             }
             catch (Exception ex)
             {
-                Dispatcher.Invoke(() => StatusLab.Content = $"切換 Twitch 分類失敗：{ex.Message}");
+                Dispatcher.Invoke(() => StatusLab.Content = $"切換 Twitch 分類失敗: {ex.Message}");
             }
         }
 
@@ -356,22 +397,6 @@ namespace TwitchAutoGameSwitcher
                 _scanTimer = null;
             }
             base.OnClosing(e);
-        }
-
-        private void ApplySseEndpointButton_Click(object sender, RoutedEventArgs e)
-        {
-            var endpoint = SseEndpointTextBox.Text.Trim();
-            // 檢查格式: https://nxapi-presence.fancy.org.uk/api/presence/[id]/events
-            var match = Regex.Match(endpoint, @"^https://nxapi-presence\.fancy\.org\.uk/api/presence/([^/]+)/events$");
-            if (!match.Success)
-            {
-                StatusLab.Content = "SSE 端點格式錯誤，請確認輸入正確的 URL。";
-                return;
-            }
-            var id = match.Groups[1].Value;
-            StatusLab.Content = $"SSE 端點已套用，ID: {id}";
-            SaveSseEndpointConfig(endpoint);
-            InitSSEClient(endpoint);
         }
     }
 }

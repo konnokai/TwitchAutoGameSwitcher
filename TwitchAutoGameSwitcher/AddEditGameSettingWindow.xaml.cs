@@ -111,10 +111,16 @@ namespace TwitchAutoGameSwitcher
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
+            // 新增 TitleIdTextBox 檢查，若有資料則以 TitleIdTextBox 為準
+            string executableName = ExecutableTextBox.Text;
+            if (!string.IsNullOrWhiteSpace(TitleIdTextBox.Text))
+            {
+                executableName = TitleIdTextBox.Text.Trim().ToLower();
+            }
             if (int.TryParse(PriorityTextBox.Text, out int priority) &&
                 !string.IsNullOrWhiteSpace(GameNameTextBox.Text) &&
                 !string.IsNullOrWhiteSpace(GameIdTextBox.Text) &&
-                !string.IsNullOrWhiteSpace(ExecutableTextBox.Text))
+                !string.IsNullOrWhiteSpace(executableName))
             {
                 GameSetting = new GameSetting
                 {
@@ -122,7 +128,7 @@ namespace TwitchAutoGameSwitcher
                     Name = GameNameTextBox.Text,
                     Id = GameIdTextBox.Text,
                     BoxArtPath = BoxArtImage.Source is BitmapImage bmp ? bmp.UriSource?.LocalPath : null,
-                    ExecutableName = ExecutableTextBox.Text
+                    ExecutableName = executableName
                 };
                 DialogResult = true;
             }

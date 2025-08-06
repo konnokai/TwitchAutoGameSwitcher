@@ -2,9 +2,25 @@
 
 namespace TwitchAutoGameSwitcher.NxApi.Model
 {
-    // Root myDeserializedClass = JsonConvert.DeserializeObject<Root>(myJsonResponse);
     public class Game
     {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("imageUri")]
+        public string ImageUri { get; set; }
+
+        [JsonProperty("shopUri")]
+        public string ShopUri { get; set; }
+
+        [JsonProperty("totalPlayTime")]
+        public int TotalPlayTime { get; set; }
+
+        [JsonProperty("firstPlayedAt")]
+        public int FirstPlayedAt { get; set; }
+
+        [JsonProperty("sysDescription")]
+        public string SysDescription { get; set; }
     }
 
     public class Presence
@@ -20,6 +36,9 @@ namespace TwitchAutoGameSwitcher.NxApi.Model
 
         [JsonProperty("game")]
         public Game Game { get; set; }
+
+        [JsonProperty("platform")]
+        public int Platform { get; set; }
     }
 
     public class FriendJson

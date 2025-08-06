@@ -1,4 +1,5 @@
 using LaunchDarkly.EventSource;
+using System.Reflection;
 
 namespace TwitchAutoGameSwitcher.NxApi
 {
@@ -12,8 +13,11 @@ namespace TwitchAutoGameSwitcher.NxApi
         public SSEClient(string endpoint)
         {
             _endpoint = endpoint;
-            var config = Configuration.Builder(new Uri(_endpoint)).Build();
-            _eventSource = new EventSource(config);
+
+            var configurationBuilder = Configuration.Builder(new Uri(_endpoint));
+            configurationBuilder.RequestHeader("User-Agent", $"TwitchAutoGameSwitcher/{Assembly.GetExecutingAssembly().GetName().Version} (+https://github.com/konnokai/TwitchAutoGameSwitcher)");
+
+            _eventSource = new EventSource(configurationBuilder.Build());
 
             _eventSource.MessageReceived += (sender, e) =>
             {
@@ -25,6 +29,11 @@ namespace TwitchAutoGameSwitcher.NxApi
         public void Start()
         {
             Task.Run(() => _eventSource.StartAsync());
+        }
+
+        public void Stop()
+        {
+            _eventSource.Close();
         }
 
         public void Dispose()

@@ -1,7 +1,7 @@
 <Window x:Class="TwitchAutoGameSwitcher.AddEditGameSettingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="新增/編輯遊戲設定" Height="312" Width="496" WindowStartupLocation="CenterOwner">
+        Title="新增/編輯遊戲設定" Height="347" Width="506" WindowStartupLocation="CenterOwner">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="35"/>
@@ -9,36 +9,42 @@
             <RowDefinition Height="35"/>
             <RowDefinition Height="72"/>
             <RowDefinition Height="35"/>
+            <RowDefinition Height="35"/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="80"/>
+            <ColumnDefinition Width="90"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <TextBlock Text="優先度:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
+        <TextBlock Text="優先度" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
         <TextBox x:Name="PriorityTextBox" Width="24" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" Text="1"/>
 
-        <TextBlock Text="分類名稱:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
+        <TextBlock Text="分類名稱" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
         <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,5,0,5">
             <TextBox x:Name="GameNameTextBox" Width="200" VerticalAlignment="Center" HorizontalAlignment="Left"/>
             <Button x:Name="SearchGameButton" Content="查詢" Width="60" Margin="10,0,0,0" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <TextBlock Text="分類 Id:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
+        <TextBlock Text="分類 Id" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
         <TextBox x:Name="GameIdTextBox" Grid.Row="2" Grid.Column="1" IsReadOnly="True" VerticalAlignment="Center" Width="80" HorizontalAlignment="Left" IsEnabled="False"/>
 
-        <TextBlock Text="分類縮圖:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
+        <TextBlock Text="分類縮圖" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
         <Image x:Name="BoxArtImage" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Width="52" Height="72"/>
 
-        <TextBlock Text="執行檔名稱:" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center"/>
+        <TextBlock Text="執行檔名稱" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center"/>
         <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,5,0,5">
             <TextBox x:Name="ExecutableTextBox" Width="200" VerticalAlignment="Center" HorizontalAlignment="Left" IsEnabled="False"/>
             <Button x:Name="BrowseExeButton" Content="選擇檔案" Width="60" Margin="10,0,0,0" VerticalAlignment="Center"/>
             <Button x:Name="DetectExeButton" Content="偵測執行中程式" Width="100" Margin="10,0,0,0" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+        <TextBlock Text="Switch TitleID" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center"/>
+        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,5,0,5">
+            <TextBox x:Name="TitleIdTextBox" VerticalAlignment="Center" HorizontalAlignment="Center" Width="300"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
             <Button x:Name="OkButton" Content="確定" Width="100" Margin="0,0,10,0"/>
             <Button x:Name="CancelButton" Content="取消" Width="100"/>
         </StackPanel>

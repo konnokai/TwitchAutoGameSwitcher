@@ -248,20 +248,24 @@ namespace TwitchAutoGameSwitcher
         {
             try
             {
-                var windowList = new List<WindowInfo>();
-                WindowHelper.FillWindowList(windowList, WindowSearchMode.ExcludeMinimized);
                 GameSetting? matched = null;
-                if (windowList.Count > 0)
-                {
-                    matched = _gameSettings
-                        .OrderByDescending(g => g.Priority)
-                        .FirstOrDefault(g => windowList.Any(exe => exe.Executable.EndsWith(g.ExecutableName, StringComparison.OrdinalIgnoreCase)));
-                }
-
-                // 若本地未偵測到遊戲，或本地偵測到但沒找到對應遊戲設定，則檢查 SSE 狀態
-                if (matched == null && !string.IsNullOrEmpty(_latestSseTitleId))
+                // 首先檢查 SSE 狀態
+                if (!string.IsNullOrEmpty(_latestSseTitleId))
                 {
                     matched = _gameSettings.FirstOrDefault(g => string.Equals(g.ExecutableName, _latestSseTitleId, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // 如果 SSE 狀態沒有匹配，則檢查遊戲視窗
+                if (matched == null)
+                {
+                    var windowList = new List<WindowInfo>();
+                    WindowHelper.FillWindowList(windowList, WindowSearchMode.ExcludeMinimized);
+                    if (windowList.Count > 0)
+                    {
+                        matched = _gameSettings
+                            .OrderByDescending(g => g.Priority)
+                            .FirstOrDefault(g => windowList.Any(exe => exe.Executable.EndsWith(g.ExecutableName, StringComparison.OrdinalIgnoreCase)));
+                    }
                 }
 
                 if (matched == null)
